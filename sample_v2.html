@@ -1,0 +1,300 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/jquery/2.1.1/jquery.min.js" type="text/javascript"></script>
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/underscore.js/1.7.0/underscore-min.js" type="text/javascript"></script>
+	<script src="http://cdnjs.cloudflare.com/ajax/libs/backbone.js/1.1.2/backbone-min.js" type="text/javascript"></script>
+	<link rel="stylesheet" type="text/css" href="http://cdnjs.cloudflare.com/ajax/libs/twitter-bootstrap/3.2.0/css/bootstrap.min.css">
+</head>
+<body>
+
+<!-- Main Content -->
+
+<div id="dContent" class="container"></div>
+
+<!-- Templates -->
+
+<script id="tmplHeader" type="text/html">
+	<h1><%= msg %></h1>
+</script>
+
+<script id="tmplBlock" type="text/html">
+	<a href="<%= pageLinkAddress %>" class="list-group-item">
+		<div class="list-group-item-text"><%= shortDescription %></div>
+	</a>
+</script>
+
+<script id="tmplParagraph" type="text/html">
+	<p><%= content %></p>
+</script>
+
+<script id="tmplBackBtn" type="text/html">
+	<a href="" id="aBackBtn">go back</a>
+</script>
+
+<!-- The fun stuff -->
+
+<script>
+	
+	window.mainContent = $('#dContent');
+	
+	window.App = {
+		Models: {},
+		Collections: {},
+		Views: {}
+	};
+
+	window.template = function(id) {
+		return _.template($('#' + id).html());
+	};
+
+	App.Settings = {
+		shortDescriptionLength: 100,
+		defaultHeader: "Hai World!",
+		pageHeader: "Showing Page"
+	};
+
+	////////////////////////////////////////////////////////////////////////////
+	//	Controller AKA Router
+	////////////////////////////////////////////////////////////////////////////
+
+	App.Router = Backbone.Router.extend({
+
+		initialize: function() {
+			var jsonString = $(".tmplpage").text();
+			var dataObject = $.parseJSON(jsonString);
+			this.blocks = new App.Collections.Blocks(dataObject);
+		},
+
+		routes: {
+			"home": "home", // #home
+			"page/:num": "page",  // #page/5
+			"*path": "defaultPath"
+		},
+
+		defaultPath: function() {
+			this.home();
+		},
+
+		home: function() {
+			var homeView = new App.Views.Home({collection: this.blocks});
+			mainContent.append(homeView.el);
+		},
+
+		page: function(num) {
+			var mParams = {
+				pageNum: num,
+				collection: this.blocks
+			};
+			var vParams = {
+				model: new App.Models.Page(mParams)
+			};
+			var page = new App.Views.Page(vParams);
+		}
+
+	});
+
+	////////////////////////////////////////////////////////////////////////////
+	//	Models
+	////////////////////////////////////////////////////////////////////////////
+
+	App.Models.Page = Backbone.Model.extend({
+		initialize: function() {
+			var blocks = this.attributes.collection.models;
+			var pageNum = parseInt(this.attributes.pageNum);
+			var index = pageNum - 1;
+			// Only include the content if there is any content.
+			if (index >= 0 && index < blocks.length) {
+				this.attributes.content = blocks[index].attributes.content;
+			}
+			var pageHeaderText = App.Settings.pageHeader.trim() + " " + pageNum;
+			this.attributes.pageHeaderText = pageHeaderText;
+		}
+	});
+
+	App.Models.Block = Backbone.Model.extend({
+
+		initialize: function() {
+			var pageId = this.attributes.pageId;
+			var paragraphs = this.attributes.paragraphs;
+			// Sanity checks.
+			if (!pageId || pageId < 1) {
+				throw new Error("Page ID is out of range: " + pageId);
+			}
+			if (!paragraphs || paragraphs.length < 1) {
+				paragraphs = ["No content found."];
+			}
+			// Get a short snippet of the content for the home page.
+			var firstParagraph = paragraphs[0];
+			var maxLength = App.Settings.shortDescriptionLength;
+			var shortDescription = firstParagraph;
+			if (shortDescription.length > maxLength) {
+				shortDescription = firstParagraph.substring(0, maxLength).trim();
+			}
+			shortDescription += "...";
+			this.attributes.shortDescription = shortDescription;
+			// Combine the content paragraphs into one string.
+			var fullPageContent = "";
+			var compiled = template("tmplParagraph");
+			paragraphs.forEach(function(paragraph) {
+				fullPageContent += compiled({content: paragraph});
+			});
+			this.attributes.content = fullPageContent;
+			this.attributes.pageLinkAddress = "#page/" + pageId;
+		}
+	});
+
+	////////////////////////////////////////////////////////////////////////////
+	//	Collections
+	////////////////////////////////////////////////////////////////////////////
+
+	App.Collections.Blocks = Backbone.Collection.extend({
+		model: App.Models.Block
+	});
+
+	////////////////////////////////////////////////////////////////////////////
+	//	Views
+	////////////////////////////////////////////////////////////////////////////
+
+	App.Views.Home = Backbone.View.extend({
+
+		initialize: function () {
+			this.render();
+		},
+
+		className: 'list-group col-sm-4',
+
+		blocks: function() {
+			return this.collection.models;
+		},
+
+		render: function() {			
+			mainContent.empty();
+			mainContent.append(getHeader());
+			this.collection.each(function(block) {
+				var blockView = new App.Views.Block({model: block});
+				this.$el.append(blockView.render().el);
+			}, this);
+			return this;
+		}
+
+	});
+
+	App.Views.Block = Backbone.View.extend({
+
+		initialize: function () {
+			this.render();
+		},
+
+		tagName: 'div',
+
+		// className: 'list-group-item',
+
+		template: template("tmplBlock"),
+
+		render: function() {
+			mainContent.empty();
+			mainContent.append(getHeader());
+			this.$el.html(this.template(this.model.toJSON()));
+			return this;
+		}
+
+	});
+
+	App.Views.Page = Backbone.View.extend({
+
+		initialize: function () {
+			this.render();
+		},
+
+		el: mainContent,
+
+		events: {
+			'click #aBackBtn': 'back'
+		},
+
+		back: function() {
+			Router.navigate("home", true);
+			new vHome();
+		},
+
+		render: function() {
+			var pageContent = this.model.attributes.content;			
+			var backBtn = template("tmplBackBtn")();
+			this.$el.empty();
+			// Handle pages with missing content or invalid page ID.
+			if (!pageContent) {
+				this.$el.append(getHeader("Page not found..."));
+			} else {
+				this.$el.append(getHeader(this.model.attributes.pageHeaderText));
+				this.$el.append(pageContent);				
+			}
+			this.$el.append(backBtn);
+			return this;
+		}
+
+	});	
+
+	// ------------------------------------------------------- Utility Functions
+
+	// Create a header tags with the given message.
+	function getHeader(message) {
+		var params = {
+			msg: message || App.Settings.defaultHeader
+		};
+		return template("tmplHeader")(params);
+	}
+
+	// Create a link (anchor tags) with the given content and url (href).
+	function getLink(contents, url) {
+		var params = {
+			content: contents,
+			address: url
+		};
+		return template("tmplLink")(params);
+	}
+	
+</script>
+
+<!-- Startup -->
+
+<script>
+	$(document).ready(function() {
+		new App.Router();
+		Backbone.history.start();
+	});
+</script>
+
+<!-- Dummy Data -->
+
+<script class="tmplpage" type="application/json">
+[
+	{
+		"pageId": "1",
+		"paragraphs": [
+		"Lorem ipsum dolor sit amet, consectetur adipiscing elit. Curabitur lobortis nisl quis enim pretium, vitae accumsan est vestibulum. Sed eget nibh dapibus, pulvinar lorem nec, faucibus diam. Vestibulum ut eleifend diam. Praesent placerat, dui ut eleifend posuere, risus ante condimentum erat, vel ullamcorper nibh ex vel nisl. Sed in tempus magna. Duis mollis ligula non risus venenatis pretium. Etiam ac odio eget neque sodales facilisis. Nunc sit amet ullamcorper arcu, ullamcorper tristique nulla. Ut quis vulputate erat. Donec bibendum elit in risus mollis auctor. Pellentesque non volutpat enim.",
+		"Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Vestibulum auctor, purus ac blandit tincidunt, augue ex consequat est, nec vehicula nulla orci in erat. Integer rhoncus at velit sit amet suscipit. Cum sociis natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Integer vehicula, justo ut pulvinar finibus, dui libero blandit ipsum, nec molestie ex tellus id leo. Mauris dictum quam arcu. Praesent euismod massa dui, nec tempor odio dapibus nec. Nunc varius enim sed porta pellentesque. Donec at est venenatis, gravida massa eu, pretium orci. Integer a scelerisque sapien. Maecenas vitae volutpat velit. Morbi ex nibh, dignissim a dignissim a, hendrerit vel ligula. Aenean sollicitudin orci aliquam, varius lectus fermentum, iaculis risus.",
+		"In dolor mauris, bibendum quis porttitor quis, condimentum eget mauris. Donec libero elit, maximus sed nisi ut, dapibus vehicula eros. Vestibulum dapibus odio enim, a pulvinar libero ullamcorper pellentesque. Quisque eget tellus mauris. Maecenas ac quam at ligula convallis pulvinar et ac diam. Duis in iaculis tellus. Suspendisse ac efficitur felis. Mauris fermentum pulvinar tellus. Nunc quis elit erat. Suspendisse cursus ex ut tellus volutpat, at iaculis mauris euismod. Donec eu ultricies felis. Duis risus quam, accumsan non enim ac, congue egestas nunc. Sed tempor, erat quis dignissim tempor, quam quam mattis urna, a rhoncus lorem nunc eu lacus."
+		]
+	},
+	{
+		"pageId": "2",
+		"paragraphs": [
+		"Maecenas imperdiet dui non nibh vulputate imperdiet. Quisque volutpat nunc sed pellentesque mattis. Proin quam purus, bibendum vitae fermentum at, tempor maximus justo. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Donec tortor arcu, luctus non finibus et, condimentum a eros. Maecenas scelerisque nisi ac dui ultrices, et fringilla ipsum consequat. Ut et gravida felis. Proin maximus purus id arcu faucibus, sit amet ullamcorper sem dignissim. Integer ut nunc eget purus maximus vehicula. In hac habitasse platea dictumst. Curabitur et eleifend ex, elementum consectetur lectus. Aenean tristique dolor risus, rutrum sodales sem vestibulum et. Donec sed sodales nisi, at efficitur urna.",
+		"Proin vehicula, metus id ullamcorper vehicula, orci mi faucibus ipsum, non consectetur erat enim eu ipsum. Praesent porta lectus dolor, id lacinia erat varius ac. Donec consectetur convallis ipsum, et viverra lectus consequat non. Donec vitae auctor odio. Vivamus sed tellus in eros tempor suscipit vitae vitae lectus. Praesent placerat turpis vel cursus porta. Integer congue eu nisi nec aliquam. Suspendisse vehicula pretium lectus non condimentum. Proin ullamcorper eu urna vitae mollis.",
+		"Quisque tempus tellus nibh, sit amet rutrum mauris rutrum vel. Integer vitae tempus purus. Maecenas ac diam eu ligula placerat aliquet. Proin quis ligula id dui laoreet dictum. Quisque aliquam auctor nibh at tempus. Nulla semper tincidunt sem ut dignissim. Proin hendrerit semper eros, sed euismod augue pretium vel. Vivamus eget eros ipsum. Donec ultricies risus vehicula lectus rhoncus finibus."
+		]
+	},
+	{
+		"pageId": "3",
+		"paragraphs": [
+		"Proin a lacus sit amet dolor ultricies dapibus. Maecenas malesuada condimentum leo, id viverra quam euismod eu. Ut vitae congue massa. Duis eu blandit lectus. In ornare blandit massa interdum semper. Nunc pretium nulla quis urna sollicitudin ultricies ac vitae lorem. Vestibulum ultricies diam nec nulla gravida volutpat. Mauris faucibus purus eu enim pharetra, vitae lobortis urna imperdiet. Aenean vitae malesuada purus. Etiam laoreet eu ante quis volutpat. Nulla sit amet efficitur erat. Maecenas porttitor tempor metus, at euismod ex.",
+		"Nam facilisis felis tortor, et maximus tortor ultricies id. Integer maximus tortor in eros consequat, non placerat odio tincidunt. Nulla facilisi. Proin rutrum magna mauris, in consequat nulla cursus quis. Aenean bibendum tellus ante, quis ornare massa euismod id. Phasellus non dignissim risus. Nunc sollicitudin arcu erat, nec blandit libero vestibulum vitae. Nulla nunc felis, malesuada non cursus a, pretium ac eros. Quisque ut nisi sit amet neque posuere vulputate id at ligula. Maecenas eu fringilla lacus.",
+		"Vivamus a quam ullamcorper, maximus enim ornare, volutpat tortor. Vestibulum dignissim orci a odio feugiat dapibus in nec urna. Quisque euismod, magna ut fringilla laoreet, nisl lorem gravida justo, quis mattis lectus velit et mi. Quisque velit nisi, elementum elementum arcu id, cursus varius risus. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Nam suscipit suscipit ex id convallis. Phasellus in tempor velit. Quisque auctor leo nec ligula rutrum, eget pharetra justo tempus. Praesent ex nisl, luctus sit amet molestie sed, commodo tempor metus. Etiam sit amet dictum nulla, id maximus ipsum. Praesent vitae orci est."
+		]
+	}
+]
+</script>
+
+</body>
+</html>
