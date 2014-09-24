@@ -124,22 +124,8 @@
 			if (!paragraphs || paragraphs.length < 1) {
 				paragraphs = ["No content found."];
 			}
-			// Get a short snippet of the content for the home page.
-			var firstParagraph = paragraphs[0];
-			var maxLength = App.Settings.shortDescriptionLength;
-			var shortDescription = firstParagraph;
-			if (shortDescription.length > maxLength) {
-				shortDescription = firstParagraph.substring(0, maxLength).trim();
-			}
-			shortDescription += "...";
-			this.attributes.shortDescription = shortDescription;
-			// Combine the content paragraphs into one string.
-			var fullPageContent = "";
-			var compiled = template("tmplParagraph");
-			paragraphs.forEach(function(paragraph) {
-				fullPageContent += compiled({content: paragraph});
-			});
-			this.attributes.content = fullPageContent;
+			this.attributes.shortDescription = getShortDescription(paragraphs);
+			this.attributes.content = getFullPageContent(paragraphs);
 			this.attributes.pageLinkAddress = "#page/" + pageId;
 		}
 	});
@@ -193,8 +179,6 @@
 		template: template("tmplBlock"),
 
 		render: function() {
-			mainContent.empty();
-			mainContent.append(getHeader());
 			this.$el.html(this.template(this.model.toJSON()));
 			return this;
 		}
@@ -245,13 +229,26 @@
 		return template("tmplHeader")(params);
 	}
 
-	// Create a link (anchor tags) with the given content and url (href).
-	function getLink(contents, url) {
-		var params = {
-			content: contents,
-			address: url
-		};
-		return template("tmplLink")(params);
+	// Returns a short description of the given paragraph array
+	function getShortDescription(paragraphs) {
+		var firstParagraph = paragraphs[0];
+		var maxLength = App.Settings.shortDescriptionLength;
+		var shortDescription = firstParagraph;
+		if (shortDescription.length > maxLength) {
+			shortDescription = firstParagraph.substring(0, maxLength).trim();
+			shortDescription += "...";
+		}
+		return shortDescription;
+	}
+
+	// Returns the combined paragraphs into a signle string.
+	function getFullPageContent(paragraphs) {
+		var fullPageContent = "";
+		var compiled = template("tmplParagraph");
+		paragraphs.forEach(function(paragraph) {
+			fullPageContent += compiled({content: paragraph});
+		});
+		return fullPageContent;
 	}
 	
 </script>
