@@ -99,6 +99,7 @@
 	////////////////////////////////////////////////////////////////////////////
 
 	App.Models.Page = Backbone.Model.extend({
+		
 		initialize: function() {
 			var blocks = this.attributes.collection.models;
 			var pageNum = parseInt(this.attributes.pageNum);
